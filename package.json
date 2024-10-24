@@ -1,0 +1,27 @@
+{
+  "name": "nestjs-hyper-express-platform",
+  "version": "1.0.0",
+  "description": "Hyper Express  platform for Nestjs",
+  "main": "index.js",
+  "scripts": {
+    "test": "mocha",
+    "example:serve": "ts-node ./examples/server.hyper.ts"
+  },
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "@nestjs/common": "^10.4.5",
+    "@nestjs/core": "^10.4.5",
+    "@types/chai": "^5.0.0",
+    "@types/mocha": "^10.0.9",
+    "mocha": "^10.7.3",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.6.3"
+  },
+  "dependencies": {
+    "@nestjs/platform-fastify": "^10.4.5",
+    "@nestjs/websockets": "^10.4.5",
+    "hyper-express": "^6.17.2",
+    "nestjs-hyper-express-platform": "file:"
+  }
+}
