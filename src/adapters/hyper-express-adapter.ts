@@ -34,6 +34,7 @@ import {
   DefaultRequestLocals,
 } from "hyper-express";
 import NestHyperServer from "../common/hyper";
+import { applyCors } from "../middlewares/cors.middleware";
 
 interface VersionedRoute<
   A extends Request = Request,
@@ -67,7 +68,7 @@ export class HyperExpressAdapter<
 
     Object.assign(this.httpServer, {
       address: () => this.address(),
-    })
+    });
   }
 
   /////////////////////////////
@@ -96,9 +97,17 @@ export class HyperExpressAdapter<
     return response.status(statusCode);
   }
 
-  public reply(response: Response, body: any, statusCode?: number) {
+  public reply(response: Response | Error, body: any, statusCode?: number) {
+
+    if(response instanceof Error){
+      // Log the error
+      this.logger.error(response);
+      return response;
+    }
+
     // Set status code if provided
     if (statusCode) {
+      console.log(response, "statusCode", statusCode);
       response.status(statusCode);
     }
 
@@ -162,14 +171,17 @@ export class HyperExpressAdapter<
 
     // If hostname is a function, it is the callback
     if (_type === "function") {
-      server.listen(this.port).then( socket => {
-        hostname?.();
-       server.emit("listening", socket);
-       this.logger.log(`Server listening on port ${this.port}`);
-      }).catch((err) => {
-        this.logger.error(err);
-        server.emit("error", err);
-      });
+      server
+        .listen(this.port)
+        .then((socket) => {
+          hostname?.();
+          server.emit("listening", socket);
+          this.logger.log(`Server listening on port ${this.port}`);
+        })
+        .catch((err) => {
+          this.logger.error(err);
+          server.emit("error", err);
+        });
     } else {
       server.listen(this.port, hostname as string, callback);
     }
@@ -408,6 +420,22 @@ export class HyperExpressAdapter<
     return "hyper-express";
   }
 
+  enableCors(
+    options: CorsOptions | CorsOptionsDelegate<TRequest>,
+    prefix?: string
+  ) {
+
+    // If options is not provided, return
+    if(!options)  return;
+    
+    // Log the enableCors call
+    this.logger.log("enableCors");
+    
+    // Register CORS middleware
+    this.getHttpServer()?.use(applyCors(options));
+
+  }
+
   ////////////////////////////
   // Not implemented methods
   ////////////////////////////
@@ -426,10 +454,5 @@ export class HyperExpressAdapter<
   registerParserMiddleware(prefix?: string, rawBody?: boolean) {
     this.logger.log("registerParserMiddleware", prefix, rawBody);
   }
-  enableCors(
-    options: CorsOptions | CorsOptionsDelegate<TRequest>,
-    prefix?: string
-  ) {
-    this.logger.log("enableCors", options, prefix);
-  }
+
 }
