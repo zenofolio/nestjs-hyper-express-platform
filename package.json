@@ -2,7 +2,7 @@
   "name": "nestjs-hyper-express-platform",
   "version": "1.0.0",
   "description": "Hyper Express  platform for Nestjs",
-  "main": "index.js",
+  "main": "dist/index.js",
   "scripts": {
     "test": "mocha",
     "example:serve": "ts-node ./examples/server.hyper.ts"
@@ -19,8 +19,6 @@
     "typescript": "^5.6.3"
   },
   "dependencies": {
-    "@nestjs/platform-fastify": "^10.4.5",
-    "@nestjs/websockets": "^10.4.5",
     "hyper-express": "^6.17.2",
     "nestjs-hyper-express-platform": "file:"
   }

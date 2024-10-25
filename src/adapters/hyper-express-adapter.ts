@@ -107,7 +107,6 @@ export class HyperExpressAdapter<
 
     // Set status code if provided
     if (statusCode) {
-      console.log(response, "statusCode", statusCode);
       response.status(statusCode);
     }
 
