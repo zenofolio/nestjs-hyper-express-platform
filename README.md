@@ -10,7 +10,10 @@ Here’s the updated `README.md` with the requested changes, including the devel
 
 This project provides an **adapter** for using the high-performance [HyperExpress](https://github.com/kartikk221/hyper-express) framework as the platform driver for a [NestJS](https://nestjs.com) application. It allows you to benefit from HyperExpress' ultra-fast server while keeping all the benefits of the NestJS framework.
 
+Inspired by [nest-hyper-express](https://github.com/llong2195/nest-hyper-express)
+
 > **Status:** This package is currently in **development** and not available on npm yet. You can clone the repository and test it locally.
+
 
 ## Features
 
