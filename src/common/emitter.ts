@@ -1,11 +1,13 @@
+type Function = (...args: unknown[]) => void;
+
 export default class EventEmitter {
-  private events: { [key: string]: Function[] } = {};
+  private events: Map<string, Set<Function>> = new Map();
 
   on(event: string, listener: Function) {
-    if (!this.events[event]) {
-      this.events[event] = [];
+    if (!this.events.has(event)) {
+      this.events.set(event, new Set());
     }
-    this.events[event].push(listener);
+    this.events.get(event)!.add(listener);
   }
 
   addListener(event: string, listener: Function) {
@@ -13,7 +15,7 @@ export default class EventEmitter {
   }
 
   once(event: string, listener: Function) {
-    const fn = (...args: any[]) => {
+    const fn = (...args: unknown[]) => {
       listener(...args);
       this.off(event, fn);
     };
@@ -21,28 +23,27 @@ export default class EventEmitter {
   }
 
   off(event: string, listener: Function) {
-    if (!this.events[event]) {
-      return;
+    if (!this.events.has(event)) return;
+    this.events.get(event)!.delete(listener);
+    if (this.events.get(event)!.size === 0) {
+      this.events.delete(event);
     }
-    this.events[event] = this.events[event].filter((fn) => fn !== listener);
   }
 
   removeListener(event: string, listener: Function) {
     this.off(event, listener);
   }
 
-  emit(event: string, ...args: any[]) {
-    if (!this.events[event]) {
-      return;
-    }
-    this.events[event].forEach((fn) => fn(...args));
+  emit(event: string, ...args: unknown[]) {
+    if (!this.events.has(event)) return;
+    this.events.get(event)!.forEach((fn) => fn(...args));
   }
 
   removeAllListeners(event: string) {
-    delete this.events[event];
+    this.events.delete(event);
   }
 
   destroy() {
-    this.events = {};
+    this.events.clear();
   }
 }

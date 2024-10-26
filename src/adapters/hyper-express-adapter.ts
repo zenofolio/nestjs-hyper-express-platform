@@ -1,51 +1,49 @@
-/* eslint-disable @typescript-eslint/no-empty-function */
-/* eslint-disable @typescript-eslint/ban-types */
-import {
-  InternalServerErrorException,
-  Logger,
-  RequestMethod,
-  StreamableFile,
-  VersioningType,
-} from "@nestjs/common";
+import { Logger } from "@nestjs/common/services/logger.service";
+import { VersioningType } from "@nestjs/common/enums/version-type.enum";
+import { RequestMethod } from "@nestjs/common/enums/request-method.enum";
+import { InternalServerErrorException } from "@nestjs/common/exceptions";
+import { AbstractHttpAdapter } from "@nestjs/core/adapters/http-adapter";
+import { RouterMethodFactory } from "@nestjs/core/helpers/router-method-factory";
+import { StreamableFile } from "@nestjs/common/file-stream/streamable-file";
 import {
   VERSION_NEUTRAL,
   VersionValue,
   VersioningOptions,
 } from "@nestjs/common/interfaces";
 import {
-  CorsOptions,
-  CorsOptionsDelegate,
-} from "@nestjs/common/interfaces/external/cors-options.interface";
-import { NestApplicationOptions } from "@nestjs/common/interfaces/nest-application-options.interface";
-import {
   isNil,
   isObject,
   isString,
   isUndefined,
 } from "@nestjs/common/utils/shared.utils";
-import { AbstractHttpAdapter } from "@nestjs/core/adapters/http-adapter";
-import { RouterMethodFactory } from "@nestjs/core/helpers/router-method-factory";
+import { NestApplicationOptions } from "@nestjs/common/interfaces/nest-application-options.interface";
 import {
+  CorsOptions,
+  CorsOptionsDelegate,
+} from "@nestjs/common/interfaces/external/cors-options.interface";
+
+import type {
   MiddlewareNext,
   Request,
   Response,
   ServerConstructorOptions,
   Router,
   DefaultRequestLocals,
-} from "hyper-express";
-import NestHyperServer from "../common/hyper";
+} from "hyper-express/types";
+
+import NestHyperServerBase from "../common/helpers/hyper";
 import { applyCors } from "../middlewares/cors.middleware";
 
 interface VersionedRoute<
   A extends Request = Request,
   B extends Response = Response,
-  R extends any = any
+  R = any
 > {
   (req: A, res: B, next: MiddlewareNext | (() => void)): R;
 }
 
 export class HyperExpressAdapter<
-  TServer extends NestHyperServer = NestHyperServer,
+  TServer extends NestHyperServerBase = NestHyperServerBase,
   TRequest extends Request<DefaultRequestLocals> = Request<DefaultRequestLocals>,
   TResponse extends Response<DefaultRequestLocals> = Response<DefaultRequestLocals>
 > extends AbstractHttpAdapter<TServer, TRequest, TResponse> {
@@ -64,29 +62,24 @@ export class HyperExpressAdapter<
     this.setInstance(this);
 
     // set server
-    this.setHttpServer(new NestHyperServer(opts) as TServer);
+    this.setHttpServer(new NestHyperServerBase(opts) as TServer);
 
-    Object.assign(this.httpServer, {
-      address: () => this.address(),
-    });
+    // // set request and response
+    // Object.assign(this.httpServer, {
+    //   address: () => this.address(),
+    // });
   }
 
   /////////////////////////////
   // Life-cycle Methods
   /////////////////////////////
 
-  public once() {}
-  public removeListener() {}
-
-  public address() {
-    return `0.0.0.0:${this.port}`;
-  }
-
   public close() {
-    if (!this.instance) {
+    const server = this.getHttpServer();
+    if (!server) {
       return undefined;
     }
-    return Promise.resolve(this.instance.close());
+    return Promise.resolve(server.close());
   }
 
   /////////////////////////////
@@ -98,8 +91,7 @@ export class HyperExpressAdapter<
   }
 
   public reply(response: Response | Error, body: any, statusCode?: number) {
-
-    if(response instanceof Error){
+    if (response instanceof Error) {
       // Log the error
       this.logger.error(response);
       return response;
@@ -127,7 +119,7 @@ export class HyperExpressAdapter<
   }
 
   public end(response: Response, message?: string) {
-    response.raw.end(message);
+    response.end(message);
   }
 
   public redirect(response: Response, statusCode: number, url: string) {
@@ -217,9 +209,9 @@ export class HyperExpressAdapter<
       }
       return next();
     };
-
+  
     // Helper function to check if the version matches
-    const isVersionMatch = (extractedVersion: any, version: VersionValue) => {
+    const isVersionMatch = (extractedVersion: any): boolean => {
       if (Array.isArray(version)) {
         return (
           (Array.isArray(extractedVersion) &&
@@ -231,89 +223,75 @@ export class HyperExpressAdapter<
         ? extractedVersion.includes(version)
         : isString(extractedVersion) && extractedVersion === version;
     };
-
+  
     // URL Versioning (via path) and Neutral Version
-    if (
-      version === VERSION_NEUTRAL ||
-      versioningOptions.type === VersioningType.URI
-    ) {
+    if (version === VERSION_NEUTRAL || versioningOptions.type === VersioningType.URI) {
+      // eslint-disable-next-line
+      // @ts-ignore
       return handler as VersionedRoute;
     }
-
+  
+    const createVersioningHandler = (extractor: (req: Request) => any): VersionedRoute => {
+      return (req, res, next) => {
+        const extractedVersion = extractor(req);
+        if (isVersionMatch(extractedVersion)) {
+          return handler(req, res, next);
+        }
+        return callNextHandler(req, res, next);
+      };
+    };
+  
     // Custom Extractor Versioning Handler
     if (versioningOptions.type === VersioningType.CUSTOM) {
-      const handlerForCustomVersioning: VersionedRoute = (req, res, next) => {
-        const extractedVersion = versioningOptions.extractor(req);
-        if (isVersionMatch(extractedVersion, version)) {
-          return handler(req, res, next);
-        }
-        return callNextHandler(req, res, next);
-      };
-      return handlerForCustomVersioning;
+      // eslint-disable-next-line
+      // @ts-ignore
+      return createVersioningHandler(versioningOptions.extractor);
     }
-
+  
     // Media Type (Accept Header) Versioning Handler
     if (versioningOptions.type === VersioningType.MEDIA_TYPE) {
-      const handlerForMediaTypeVersioning: VersionedRoute = (
-        req,
-        res,
-        next
-      ) => {
-        const acceptHeaderValue: string | undefined =
-          req.headers?.["Accept"] || req.headers?.["accept"];
-
-        const acceptHeaderVersionParameter = acceptHeaderValue
-          ? acceptHeaderValue.split(";")[1]
-          : undefined;
-
-        if (isUndefined(acceptHeaderVersionParameter)) {
-          if (Array.isArray(version) && version.includes(VERSION_NEUTRAL)) {
-            return handler(req, res, next);
-          }
-        } else {
-          const headerVersion = acceptHeaderVersionParameter.split(
-            versioningOptions.key
-          )[1];
-
-          if (isVersionMatch(headerVersion, version)) {
-            return handler(req, res, next);
-          }
+      return (req, res, next) => {
+        const acceptHeaderValue = req.headers?.["Accept"] || req.headers?.["accept"];
+        const acceptHeaderVersionParameter = acceptHeaderValue?.split(";")[1];
+  
+        if (!acceptHeaderVersionParameter) {
+          return Array.isArray(version) && version.includes(VERSION_NEUTRAL)
+            ? handler(req, res, next)
+            : callNextHandler(req, res, next);
         }
-        return callNextHandler(req, res, next);
+  
+        const headerVersion = acceptHeaderVersionParameter.split(versioningOptions.key)[1];
+        return isVersionMatch(headerVersion) ? handler(req, res, next) : callNextHandler(req, res, next);
       };
-      return handlerForMediaTypeVersioning;
     }
-
+  
     // Header Versioning Handler
     if (versioningOptions.type === VersioningType.HEADER) {
-      const handlerForHeaderVersioning: VersionedRoute = (req, res, next) => {
-        const customHeaderVersionParameter: string | undefined =
-          req.headers?.[versioningOptions.header] ||
-          req.headers?.[versioningOptions.header.toLowerCase()];
-
-        if (isUndefined(customHeaderVersionParameter)) {
-          if (Array.isArray(version) && version.includes(VERSION_NEUTRAL)) {
-            return handler(req, res, next);
-          }
-        } else if (isVersionMatch(customHeaderVersionParameter, version)) {
-          return handler(req, res, next);
+      return (req, res, next) => {
+        const customHeaderVersionParameter =
+          req.headers?.[versioningOptions.header] || req.headers?.[versioningOptions.header.toLowerCase()];
+  
+        if (!customHeaderVersionParameter) {
+          return Array.isArray(version) && version.includes(VERSION_NEUTRAL)
+            ? handler(req, res, next)
+            : callNextHandler(req, res, next);
         }
-        return callNextHandler(req, res, next);
+  
+        return isVersionMatch(customHeaderVersionParameter) ? handler(req, res, next) : callNextHandler(req, res, next);
       };
-      return handlerForHeaderVersioning;
     }
-
-    return (req, res, next) => {
-      return handler(req, res, next);
-    };
+  
+    // Fallback handler
+    return (req, res, next) => handler(req, res, next);
   }
+  
 
   /////////////////////////////
   // Route Methods
   /////////////////////////////
 
-  // @ts-ignore
-  get(path: string, handler?: any): any {
+ 
+  get(path: unknown, handler?: any): any {
     this.insertRoute("get", path, handler);
   }
 
@@ -389,8 +367,8 @@ export class HyperExpressAdapter<
     // add prefix to path if is needed
     path = this.toPath(path, prefix);
 
-    let server = router ?? this.getHttpServer();
-    let caller = server[method];
+    const server = router ?? this.getHttpServer();
+    const caller = server[method];
 
     if (!caller) {
       throw new Error(`Method ${method} not supported`);
@@ -423,23 +401,22 @@ export class HyperExpressAdapter<
     options: CorsOptions | CorsOptionsDelegate<TRequest>,
     prefix?: string
   ) {
-
     // If options is not provided, return
-    if(!options)  return;
-    
+    if (!options) return;
+
     // Log the enableCors call
     this.logger.log("enableCors");
-    
+
     // Register CORS middleware
     this.getHttpServer()?.use(applyCors(options));
-
   }
 
   ////////////////////////////
   // Not implemented methods
   ////////////////////////////
 
-  public render(response: Response, view: string, options: any) {
+  public render(response: TResponse, view: string, options: any) {
+    console.log("not implemented", view, options);
     throw Error("Not implemented");
   }
 
@@ -453,5 +430,4 @@ export class HyperExpressAdapter<
   registerParserMiddleware(prefix?: string, rawBody?: boolean) {
     this.logger.log("registerParserMiddleware", prefix, rawBody);
   }
-
 }

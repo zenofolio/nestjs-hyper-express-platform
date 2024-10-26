@@ -1,6 +1,5 @@
 import type { INestApplication, HttpServer } from '@nestjs/common';
-import type { Server, Request, Response, ServerConstructorOptions } from 'hyper-express/types';
-import { HyperExpressLsitenOptions } from './options.interface';
+import type { Server, Request, Response } from 'hyper-express/types';
 
 
 
